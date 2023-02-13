@@ -15,17 +15,18 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const passport_1 = __importDefault(require("passport"));
 const passport_google_oauth20_1 = __importDefault(require("passport-google-oauth20"));
 const GoogleStrategy = passport_google_oauth20_1.default.Strategy;
+passport_1.default.serializeUser(function (user, done) {
+    done(null, user);
+});
+passport_1.default.deserializeUser((user, done) => __awaiter(void 0, void 0, void 0, function* () {
+    done(null, user);
+}));
 passport_1.default.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
     callbackURL: "/auth/google/redirect",
     passReqToCallback: true,
 }, (request, accessToken, refreshToken, profile, done) => {
-    const userProfile = { accessToken };
-    console.log("Token-Token", userProfile);
+    const userProfile = { accessToken, profile };
     return done(null, userProfile);
 }));
-passport_1.default.serializeUser(function (user, done) {
-    done(null, user);
-});
-passport_1.default.deserializeUser((id, done) => __awaiter(void 0, void 0, void 0, function* () { }));

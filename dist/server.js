@@ -14,12 +14,11 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 require("dotenv").config();
 const express_1 = __importDefault(require("express"));
-const propertyId = process.env.GA4_PROPERTY_ID;
 require("./passport");
 const passport_1 = __importDefault(require("passport"));
 const express_session_1 = __importDefault(require("express-session"));
 const googleapis_1 = require("googleapis");
-const analytics = googleapis_1.google.analytics("v3");
+const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const app = (0, express_1.default)();
 const port = 8000;
 const sessionMiddleWare = (0, express_session_1.default)({
@@ -29,6 +28,25 @@ const sessionMiddleWare = (0, express_session_1.default)({
     saveUninitialized: false,
 });
 app.use(sessionMiddleWare);
+app.use((0, cookie_parser_1.default)());
+app.use(passport_1.default.authenticate("session"));
+const oauth2Client = new googleapis_1.google.auth.OAuth2(process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.GOOGLE_REDIRECT_URL);
+const analyticsData = googleapis_1.google.analyticsdata({
+    version: "v1beta",
+    auth: oauth2Client,
+});
+const analyticsAdmin = googleapis_1.google.analyticsadmin({
+    version: "v1beta",
+    auth: oauth2Client,
+});
+const analyticsHub = googleapis_1.google.analyticshub({
+    version: "v1",
+    auth: oauth2Client,
+});
+const analytics = googleapis_1.google.analytics({
+    version: "v3",
+    auth: oauth2Client,
+});
 app.get("/", (req, res) => {
     res.send("Hello Express + Typescript");
 });
@@ -45,46 +63,77 @@ app.get("/auth/google", passport_1.default.authenticate("google", {
     ],
 }));
 app.get("/auth/google/redirect", passport_1.default.authenticate("google", { failureRedirect: "/error" }), (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    /* const response = analytics.data.ga.get({ids: `ga:${viewId}`,
-    'start-date': startDate,
-    'end-date': endDate,
-    metrics: metric,}) */
-    /* const auth = (req.session as any).passport.user.accessToken as string;
-
-    const getAnalyticsViewId = async () => {
-      const analytics = google.analytics("v3");
-      const response = await analytics.management.accounts.list({ auth });
-      const accounts = response.data.items;
-
-      if (accounts?.length === 0) {
-        return;
-      }
-
-      return accounts;
-    };
-
-    const accounts = getAnalyticsViewId();
-
-    console.log("accounts", accounts); */
-    /* const response = analytics.management.profiles.list();
-    console.log("response", response); */
+    var _a;
+    // set Login credentials
+    const auth = req.session.passport.user.accessToken;
+    oauth2Client.setCredentials({ access_token: auth });
+    const accounts = analytics.management.webproperties
+        .list({
+        accountId: "255221576",
+        "max-results": 10,
+        "start-index": 1,
+    })
+        .then((result) => {
+        var _a;
+        const data = (_a = result.data.items) === null || _a === void 0 ? void 0 : _a.forEach((d) => {
+            var _a, _b;
+            (_b = (_a = d.permissions) === null || _a === void 0 ? void 0 : _a.effective) === null || _b === void 0 ? void 0 : _b.forEach((p) => {
+                console.log("PERMISSIONS: ", p);
+            });
+        });
+        //console.log("RESULT", result.data);
+    });
+    // GET  The logged in accounts summeries
+    const accountPropertySummaries = [];
+    const response = yield analyticsAdmin.accountSummaries.list({
+        pageSize: 100,
+    });
+    const propertySummaries = (_a = response.data.accountSummaries) === null || _a === void 0 ? void 0 : _a.forEach((element) => {
+        var _a;
+        (_a = element.propertySummaries) === null || _a === void 0 ? void 0 : _a.forEach((sum) => {
+            const summary = {
+                property: sum.property,
+                displayName: sum.displayName,
+            };
+            accountPropertySummaries.push(summary);
+        });
+        console.log("SUM: ", accountPropertySummaries);
+    });
+    //const apis = google.getSupportedAPIs();
+    // Hämtar vem som har properties för produkten //
+    /* const response = await analyticsAdmin.properties.get({
+      name: "properties/352913873",
+    }); */
     res.redirect("/analytics");
 }));
-app.get("/analytics", (req, res) => {
+app.get("/analytics", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _b;
     const auth = req.session.passport.user.accessToken;
-    const getAnalyticsViewId = () => __awaiter(void 0, void 0, void 0, function* () {
-        const analytics = googleapis_1.google.analytics("v3");
-        const response = yield analytics.management.accounts.list({ auth });
-        const accounts = response.data.items;
-        if ((accounts === null || accounts === void 0 ? void 0 : accounts.length) === 0) {
-            return;
-        }
-        return accounts;
+    oauth2Client.setCredentials({ access_token: auth });
+    const data = yield analyticsData.properties.runReport({
+        property: "properties/352913873",
+        requestBody: {
+            dateRanges: [
+                {
+                    startDate: "2023-02-08",
+                    endDate: "2023-02-09",
+                },
+            ],
+            dimensions: [
+                {
+                    name: "city",
+                },
+            ],
+            metrics: [
+                {
+                    name: "totalUsers",
+                },
+            ],
+        },
     });
-    const accounts = getAnalyticsViewId();
-    console.log("accounts", accounts);
+    (_b = data.data.rows) === null || _b === void 0 ? void 0 : _b.forEach((metric) => console.log("METRIC: ", metric));
     res.send("analytics");
-});
+}));
 app.listen(port, () => {
     console.log(`http://localhost:${port}`);
 });
