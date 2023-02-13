@@ -76,26 +76,6 @@ app.get(
     const auth = (req.session as any).passport.user.accessToken as string;
     oauth2Client.setCredentials({ access_token: auth });
 
-    // GET  The logged in accounts summeries
-
-    const accountPropertySummaries: PropertySummaries[] = [];
-    const response = await analyticsAdmin.accountSummaries.list({
-      pageSize: 100,
-    });
-
-    const propertySummaries = response.data.accountSummaries?.forEach(
-      (element) => {
-        element.propertySummaries?.forEach((sum) => {
-          const summary: PropertySummaries = {
-            property: sum.property as string,
-            displayName: sum.displayName as string,
-          };
-          accountPropertySummaries.push(summary);
-        });
-        console.log("SUM: ", accountPropertySummaries);
-      }
-    );
-
     res.redirect("/analytics");
 
     /* const accounts = analytics.management.webproperties
@@ -126,7 +106,25 @@ app.get("/analytics", async (req: Request, res: Response) => {
   const auth = (req.session as any).passport.user.accessToken as string;
   oauth2Client.setCredentials({ access_token: auth });
 
-  const data = await analyticsData.properties.runReport({
+  // GET  The logged in accounts summeries
+
+  const accountPropertySummaries: PropertySummaries[] = [];
+  const response = await analyticsAdmin.accountSummaries.list({
+    pageSize: 100,
+  });
+
+  response.data.accountSummaries?.forEach((element) => {
+    element.propertySummaries?.forEach((sum) => {
+      const summary: PropertySummaries = {
+        property: sum.property as string,
+        displayName: sum.displayName as string,
+      };
+      accountPropertySummaries.push(summary);
+    });
+    console.log("SUM: ", accountPropertySummaries);
+  });
+
+  /* const data = await analyticsData.properties.runReport({
     property: "properties/352913873",
     requestBody: {
       dateRanges: [
@@ -148,9 +146,9 @@ app.get("/analytics", async (req: Request, res: Response) => {
     },
   });
 
-  data.data.rows?.forEach((metric: any) => console.log("METRIC: ", metric));
+  data.data.rows?.forEach((metric: any) => console.log("METRIC: ", metric)); */
 
-  res.send("analytics");
+  res.send(accountPropertySummaries);
 });
 
 app.listen(port, () => {

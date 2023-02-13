@@ -63,32 +63,40 @@ app.get("/auth/google", passport_1.default.authenticate("google", {
     ],
 }));
 app.get("/auth/google/redirect", passport_1.default.authenticate("google", { failureRedirect: "/error" }), (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a;
     // set Login credentials
     const auth = req.session.passport.user.accessToken;
     oauth2Client.setCredentials({ access_token: auth });
-    const accounts = analytics.management.webproperties
-        .list({
+    res.redirect("/analytics");
+    /* const accounts = analytics.management.webproperties
+      .list({
         accountId: "255221576",
         "max-results": 10,
         "start-index": 1,
-    })
-        .then((result) => {
-        var _a;
-        const data = (_a = result.data.items) === null || _a === void 0 ? void 0 : _a.forEach((d) => {
-            var _a, _b;
-            (_b = (_a = d.permissions) === null || _a === void 0 ? void 0 : _a.effective) === null || _b === void 0 ? void 0 : _b.forEach((p) => {
-                console.log("PERMISSIONS: ", p);
-            });
+      })
+      .then((result) => {
+        const data = result.data.items?.forEach((d) => {
+          d.permissions?.effective?.forEach((p) => {
+            console.log("PERMISSIONS: ", p);
+          });
         });
         //console.log("RESULT", result.data);
-    });
+      }); */
+    //const apis = google.getSupportedAPIs();
+    // Hämtar vem som har properties för produkten //
+    /* const response = await analyticsAdmin.properties.get({
+      name: "properties/352913873",
+    }); */
+}));
+app.get("/analytics", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a;
+    const auth = req.session.passport.user.accessToken;
+    oauth2Client.setCredentials({ access_token: auth });
     // GET  The logged in accounts summeries
     const accountPropertySummaries = [];
     const response = yield analyticsAdmin.accountSummaries.list({
         pageSize: 100,
     });
-    const propertySummaries = (_a = response.data.accountSummaries) === null || _a === void 0 ? void 0 : _a.forEach((element) => {
+    (_a = response.data.accountSummaries) === null || _a === void 0 ? void 0 : _a.forEach((element) => {
         var _a;
         (_a = element.propertySummaries) === null || _a === void 0 ? void 0 : _a.forEach((sum) => {
             const summary = {
@@ -99,40 +107,30 @@ app.get("/auth/google/redirect", passport_1.default.authenticate("google", { fai
         });
         console.log("SUM: ", accountPropertySummaries);
     });
-    //const apis = google.getSupportedAPIs();
-    // Hämtar vem som har properties för produkten //
-    /* const response = await analyticsAdmin.properties.get({
-      name: "properties/352913873",
-    }); */
-    res.redirect("/analytics");
-}));
-app.get("/analytics", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
-    var _b;
-    const auth = req.session.passport.user.accessToken;
-    oauth2Client.setCredentials({ access_token: auth });
-    const data = yield analyticsData.properties.runReport({
-        property: "properties/352913873",
-        requestBody: {
-            dateRanges: [
-                {
-                    startDate: "2023-02-08",
-                    endDate: "2023-02-09",
-                },
-            ],
-            dimensions: [
-                {
-                    name: "city",
-                },
-            ],
-            metrics: [
-                {
-                    name: "totalUsers",
-                },
-            ],
-        },
+    /* const data = await analyticsData.properties.runReport({
+      property: "properties/352913873",
+      requestBody: {
+        dateRanges: [
+          {
+            startDate: "2023-02-08",
+            endDate: "2023-02-09",
+          },
+        ],
+        dimensions: [
+          {
+            name: "city",
+          },
+        ],
+        metrics: [
+          {
+            name: "totalUsers",
+          },
+        ],
+      },
     });
-    (_b = data.data.rows) === null || _b === void 0 ? void 0 : _b.forEach((metric) => console.log("METRIC: ", metric));
-    res.send("analytics");
+  
+    data.data.rows?.forEach((metric: any) => console.log("METRIC: ", metric)); */
+    res.send(accountPropertySummaries);
 }));
 app.listen(port, () => {
     console.log(`http://localhost:${port}`);
