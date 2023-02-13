@@ -3,6 +3,14 @@ import passportGoogle from "passport-google-oauth20";
 
 const GoogleStrategy = passportGoogle.Strategy;
 
+passport.serializeUser(function (user, done) {
+  done(null, user);
+});
+
+passport.deserializeUser(async (user: Express.User, done) => {
+  done(null, user);
+});
+
 passport.use(
   new GoogleStrategy(
     {
@@ -12,16 +20,9 @@ passport.use(
       passReqToCallback: true,
     },
     (request, accessToken, refreshToken, profile, done) => {
-      const userProfile = { accessToken };
-      console.log("Token-Token", userProfile);
+      const userProfile = { accessToken, profile };
 
       return done(null, userProfile);
     }
   )
 );
-
-passport.serializeUser(function (user, done) {
-  done(null, user);
-});
-
-passport.deserializeUser(async (id, done) => {});
