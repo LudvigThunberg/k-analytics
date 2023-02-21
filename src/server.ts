@@ -5,7 +5,8 @@ import passport from "passport";
 import session from "express-session";
 import { google } from "googleapis";
 import cookieParser from "cookie-parser";
-import { PropertySummaries } from "./models/serverModels";
+import { DatasetsModel, PropertySummaries } from "./models/serverModels";
+import { colors } from "./chartColors/colors";
 
 const app: Express = express();
 const port = 8000;
@@ -37,7 +38,7 @@ const analyticsAdmin = google.analyticsadmin({
   auth: oauth2Client,
 });
 
-const analyticsHub = google.analyticshub({
+/* const analyticsHub = google.analyticshub({
   version: "v1",
   auth: oauth2Client,
 });
@@ -45,7 +46,7 @@ const analyticsHub = google.analyticshub({
 const analytics = google.analytics({
   version: "v3",
   auth: oauth2Client,
-});
+}); */
 
 app.get("/", (req: Request, res: Response) => {
   res.send("Hello Express + Typescript");
@@ -55,7 +56,7 @@ app.get("/error", (req: Request, res: Response) => {
   res.send("ERROR");
 });
 
-app.get(
+/* app.get(
   "/auth/google",
   passport.authenticate("google", {
     scope: [
@@ -76,79 +77,102 @@ app.get(
     const auth = (req.session as any).passport.user.accessToken as string;
     oauth2Client.setCredentials({ access_token: auth });
 
-    res.redirect("/analytics");
-
-    /* const accounts = analytics.management.webproperties
-      .list({
-        accountId: "255221576",
-        "max-results": 10,
-        "start-index": 1,
-      })
-      .then((result) => {
-        const data = result.data.items?.forEach((d) => {
-          d.permissions?.effective?.forEach((p) => {
-            console.log("PERMISSIONS: ", p);
-          });
-        });
-        //console.log("RESULT", result.data);
-      }); */
-
-    //const apis = google.getSupportedAPIs();
-
-    // Hämtar vem som har properties för produkten //
-    /* const response = await analyticsAdmin.properties.get({
-      name: "properties/352913873",
-    }); */
+    res.redirect("/google/properties");
   }
-);
+); */
 
-app.get("/analytics", async (req: Request, res: Response) => {
-  const auth = (req.session as any).passport.user.accessToken as string;
+app.get("/google/properties", async (req: Request, res: Response) => {
+  const auth = req.headers.authorization;
   oauth2Client.setCredentials({ access_token: auth });
 
   // GET  The logged in accounts summeries
 
   const accountPropertySummaries: PropertySummaries[] = [];
-  const response = await analyticsAdmin.accountSummaries.list({
-    pageSize: 100,
-  });
 
-  response.data.accountSummaries?.forEach((element) => {
-    element.propertySummaries?.forEach((sum) => {
-      const summary: PropertySummaries = {
-        property: sum.property as string,
-        displayName: sum.displayName as string,
-      };
-      accountPropertySummaries.push(summary);
+  try {
+    const response = await analyticsAdmin.accountSummaries.list({
+      pageSize: 100,
     });
-    console.log("SUM: ", accountPropertySummaries);
-  });
 
-  /* const data = await analyticsData.properties.runReport({
-    property: "properties/352913873",
-    requestBody: {
-      dateRanges: [
+    response.data.accountSummaries?.forEach((element) => {
+      element.propertySummaries?.forEach((sum) => {
+        const summary: PropertySummaries = {
+          property: sum.property as string,
+          displayName: sum.displayName as string,
+        };
+        accountPropertySummaries.push(summary);
+      });
+
+      res.send(accountPropertySummaries);
+    });
+  } catch (error) {
+    res.status(500).send(error);
+  }
+});
+
+app.get("/google/analytics/", async (req: Request, res: Response) => {
+  const { property, fromDate, toDate, metric, dimension, label } = req.query;
+
+  const auth = req.headers.authorization;
+  oauth2Client.setCredentials({ access_token: auth });
+  try {
+    const queryData = await analyticsData.properties.runReport({
+      property: property as string,
+      requestBody: {
+        dateRanges: [
+          {
+            startDate: fromDate as string,
+            endDate: toDate as string,
+          },
+        ],
+        dimensions: [
+          {
+            name: dimension as string,
+          },
+        ],
+        metrics: [
+          {
+            name: metric as string,
+          },
+        ],
+      },
+    });
+
+    // package data to work with chart.js
+    const color = colors[Math.floor(Math.random() * 140)].rgb;
+    const labels: string[] = [];
+    const data: number[] = [];
+    const dimensionMetric = {
+      labels,
+      datasets: [
         {
-          startDate: "2023-02-08",
-          endDate: "2023-02-09",
+          data,
+          backgroundColor: [color],
+          label,
         },
       ],
-      dimensions: [
-        {
-          name: "city",
-        },
-      ],
-      metrics: [
-        {
-          name: "totalUsers",
-        },
-      ],
-    },
-  });
+    };
 
-  data.data.rows?.forEach((metric: any) => console.log("METRIC: ", metric)); */
+    if (queryData.data.rows) {
+      for (let i = 0; i < queryData.data.rows.length; i++) {
+        queryData.data.rows[i].dimensionValues?.forEach((dValue) => {
+          if (dValue.value) {
+            labels.push(dValue.value);
+          }
+        });
+        queryData.data.rows[i].metricValues?.forEach((mValue) => {
+          if (mValue.value) {
+            data.push(parseInt(mValue.value));
+          }
+        });
+      }
+    }
 
-  res.send(accountPropertySummaries);
+    res.send(dimensionMetric);
+  } catch (error) {
+    console.log("ERRERROR: ", error);
+    res.status(500).send(error);
+  }
 });
 
 app.listen(port, () => {
