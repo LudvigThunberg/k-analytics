@@ -19,6 +19,7 @@ const passport_1 = __importDefault(require("passport"));
 const express_session_1 = __importDefault(require("express-session"));
 const googleapis_1 = require("googleapis");
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
+const colors_1 = require("./chartColors/colors");
 const app = (0, express_1.default)();
 const port = 8000;
 const sessionMiddleWare = (0, express_session_1.default)({
@@ -39,98 +40,132 @@ const analyticsAdmin = googleapis_1.google.analyticsadmin({
     version: "v1beta",
     auth: oauth2Client,
 });
-const analyticsHub = googleapis_1.google.analyticshub({
-    version: "v1",
-    auth: oauth2Client,
+/* const analyticsHub = google.analyticshub({
+  version: "v1",
+  auth: oauth2Client,
 });
-const analytics = googleapis_1.google.analytics({
-    version: "v3",
-    auth: oauth2Client,
-});
+
+const analytics = google.analytics({
+  version: "v3",
+  auth: oauth2Client,
+}); */
 app.get("/", (req, res) => {
     res.send("Hello Express + Typescript");
 });
 app.get("/error", (req, res) => {
     res.send("ERROR");
 });
-app.get("/auth/google", passport_1.default.authenticate("google", {
+/* app.get(
+  "/auth/google",
+  passport.authenticate("google", {
     scope: [
-        "email",
-        "profile",
-        "https://www.googleapis.com/auth/analytics.readonly",
-        "https://www.googleapis.com/auth/analytics",
-        "https://www.googleapis.com/auth/logging.read",
+      "email",
+      "profile",
+      "https://www.googleapis.com/auth/analytics.readonly",
+      "https://www.googleapis.com/auth/analytics",
+      "https://www.googleapis.com/auth/logging.read",
     ],
-}));
-app.get("/auth/google/redirect", passport_1.default.authenticate("google", { failureRedirect: "/error" }), (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+  })
+);
+
+app.get(
+  "/auth/google/redirect",
+  passport.authenticate("google", { failureRedirect: "/error" }),
+  async (req: Request, res: Response) => {
     // set Login credentials
-    const auth = req.session.passport.user.accessToken;
+    const auth = (req.session as any).passport.user.accessToken as string;
     oauth2Client.setCredentials({ access_token: auth });
-    res.redirect("/analytics");
-    /* const accounts = analytics.management.webproperties
-      .list({
-        accountId: "255221576",
-        "max-results": 10,
-        "start-index": 1,
-      })
-      .then((result) => {
-        const data = result.data.items?.forEach((d) => {
-          d.permissions?.effective?.forEach((p) => {
-            console.log("PERMISSIONS: ", p);
-          });
-        });
-        //console.log("RESULT", result.data);
-      }); */
-    //const apis = google.getSupportedAPIs();
-    // Hämtar vem som har properties för produkten //
-    /* const response = await analyticsAdmin.properties.get({
-      name: "properties/352913873",
-    }); */
-}));
-app.get("/analytics", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+
+    res.redirect("/google/properties");
+  }
+); */
+app.get("/google/properties", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     var _a;
-    const auth = req.session.passport.user.accessToken;
+    const auth = req.headers.authorization;
     oauth2Client.setCredentials({ access_token: auth });
     // GET  The logged in accounts summeries
     const accountPropertySummaries = [];
-    const response = yield analyticsAdmin.accountSummaries.list({
-        pageSize: 100,
-    });
-    (_a = response.data.accountSummaries) === null || _a === void 0 ? void 0 : _a.forEach((element) => {
-        var _a;
-        (_a = element.propertySummaries) === null || _a === void 0 ? void 0 : _a.forEach((sum) => {
-            const summary = {
-                property: sum.property,
-                displayName: sum.displayName,
-            };
-            accountPropertySummaries.push(summary);
+    try {
+        const response = yield analyticsAdmin.accountSummaries.list({
+            pageSize: 100,
         });
-        console.log("SUM: ", accountPropertySummaries);
-    });
-    /* const data = await analyticsData.properties.runReport({
-      property: "properties/352913873",
-      requestBody: {
-        dateRanges: [
-          {
-            startDate: "2023-02-08",
-            endDate: "2023-02-09",
-          },
-        ],
-        dimensions: [
-          {
-            name: "city",
-          },
-        ],
-        metrics: [
-          {
-            name: "totalUsers",
-          },
-        ],
-      },
-    });
-  
-    data.data.rows?.forEach((metric: any) => console.log("METRIC: ", metric)); */
-    res.send(accountPropertySummaries);
+        (_a = response.data.accountSummaries) === null || _a === void 0 ? void 0 : _a.forEach((element) => {
+            var _a;
+            (_a = element.propertySummaries) === null || _a === void 0 ? void 0 : _a.forEach((sum) => {
+                const summary = {
+                    property: sum.property,
+                    displayName: sum.displayName,
+                };
+                accountPropertySummaries.push(summary);
+            });
+            res.send(accountPropertySummaries);
+        });
+    }
+    catch (error) {
+        res.status(500).send(error);
+    }
+}));
+app.get("/google/analytics/", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _b, _c;
+    const { property, fromDate, toDate, metric, dimension, label } = req.query;
+    const auth = req.headers.authorization;
+    oauth2Client.setCredentials({ access_token: auth });
+    try {
+        const queryData = yield analyticsData.properties.runReport({
+            property: property,
+            requestBody: {
+                dateRanges: [
+                    {
+                        startDate: fromDate,
+                        endDate: toDate,
+                    },
+                ],
+                dimensions: [
+                    {
+                        name: dimension,
+                    },
+                ],
+                metrics: [
+                    {
+                        name: metric,
+                    },
+                ],
+            },
+        });
+        // package data to work with chart.js
+        const color = colors_1.colors[Math.floor(Math.random() * 140)].rgb;
+        const labels = [];
+        const data = [];
+        const dimensionMetric = {
+            labels,
+            datasets: [
+                {
+                    data,
+                    backgroundColor: [color],
+                    label,
+                },
+            ],
+        };
+        if (queryData.data.rows) {
+            for (let i = 0; i < queryData.data.rows.length; i++) {
+                (_b = queryData.data.rows[i].dimensionValues) === null || _b === void 0 ? void 0 : _b.forEach((dValue) => {
+                    if (dValue.value) {
+                        labels.push(dValue.value);
+                    }
+                });
+                (_c = queryData.data.rows[i].metricValues) === null || _c === void 0 ? void 0 : _c.forEach((mValue) => {
+                    if (mValue.value) {
+                        data.push(parseInt(mValue.value));
+                    }
+                });
+            }
+        }
+        res.send(dimensionMetric);
+    }
+    catch (error) {
+        console.log("ERRERROR: ", error);
+        res.status(500).send(error);
+    }
 }));
 app.listen(port, () => {
     console.log(`http://localhost:${port}`);

@@ -1,4 +1,4 @@
-import passport from "passport";
+/* import passport from "passport";
 import passportGoogle from "passport-google-oauth20";
 
 const GoogleStrategy = passportGoogle.Strategy;
@@ -22,7 +22,7 @@ passport.use(
     (request, accessToken, refreshToken, profile, done) => {
       const userProfile = { accessToken, profile };
 
-      return done(null, userProfile);
+      return done(null, { accessToken });
     }
   )
-);
+); */
