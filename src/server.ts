@@ -175,6 +175,113 @@ app.get("/google/analytics/", async (req: Request, res: Response) => {
   }
 });
 
+app.get("/google/credentials", (req: Request, res: Response) => {
+  console.log("RQ.HEADERS", req.headers);
+
+  const { authorization, refresh, expiresIn } = req.headers;
+
+  // Save to DB here
+
+  res.send(200);
+});
+
+app.get("/google/get-data", async (req: Request, res: Response) => {
+  const assessToken = process.env.GOOGLE_ACCESS_TOKEN as string;
+  const expiresIn = parseInt(process.env.GOOGLE_EXPIRES_IN as string);
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN as string;
+
+  if (Date.now() > expiresIn) {
+    console.log("Expired!!!!");
+    oauth2Client.setCredentials({
+      refresh_token: refreshToken,
+    });
+  } else {
+    oauth2Client.setCredentials({ access_token: assessToken });
+  }
+
+  console.log("Date.now:", Date.now());
+  console.log("EXPIRES_IN:", expiresIn);
+
+  try {
+    const queryData = await analyticsData.properties.runReport({
+      property: process.env.GOOGLE_PROPERTY_ID,
+      requestBody: {
+        dateRanges: [
+          {
+            startDate: "2023-02-08",
+            endDate: "2023-02-09",
+          },
+        ],
+        dimensions: [
+          {
+            name: "city",
+          },
+        ],
+        metrics: [
+          {
+            name: "totalUsers",
+          },
+        ],
+      },
+    });
+
+    console.log("queryData", queryData.data);
+    res.status(200).send(queryData.data);
+  } catch (error) {
+    console.log("ERRERROR: ", error);
+    res.status(500).send(error);
+  }
+});
+
+const getData = async () => {
+  const assessToken = process.env.GOOGLE_ACCESS_TOKEN as string;
+  const expiresIn = parseInt(process.env.GOOGLE_EXPIRES_IN as string);
+  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN as string;
+
+  if (Date.now() > expiresIn) {
+    console.log("Expired!!!!");
+    oauth2Client.setCredentials({
+      refresh_token: refreshToken,
+    });
+  } else {
+    oauth2Client.setCredentials({ access_token: assessToken });
+  }
+
+  try {
+    const queryData = await analyticsData.properties.runReport({
+      property: process.env.GOOGLE_PROPERTY_ID,
+      requestBody: {
+        dateRanges: [
+          {
+            startDate: "2023-02-08",
+            endDate: "2023-02-09",
+          },
+        ],
+        dimensions: [
+          {
+            name: "city",
+          },
+        ],
+        metrics: [
+          {
+            name: "totalUsers",
+          },
+        ],
+      },
+    });
+
+    // save to DB here
+
+    console.log("queryData", queryData.data);
+  } catch (error) {
+    console.log("ERRERROR: ", error);
+  }
+};
+
+// setInterval(getData, 60000);
+
+app.get;
+
 app.listen(port, () => {
   console.log(`http://localhost:${port}`);
 });
