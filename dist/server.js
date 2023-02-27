@@ -20,6 +20,8 @@ const express_session_1 = __importDefault(require("express-session"));
 const googleapis_1 = require("googleapis");
 const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const colors_1 = require("./chartColors/colors");
+const client_1 = require("@prisma/client");
+const prisma = new client_1.PrismaClient();
 const app = (0, express_1.default)();
 const port = 8000;
 const sessionMiddleWare = (0, express_session_1.default)({
@@ -167,12 +169,78 @@ app.get("/google/analytics/", (req, res) => __awaiter(void 0, void 0, void 0, fu
         res.status(500).send(error);
     }
 }));
-app.get("/google/credentials", (req, res) => {
-    console.log("RQ.HEADERS", req.headers);
-    const { authorization, refresh, expiresIn } = req.headers;
-    // Save to DB here
-    res.send(200);
+app.get("/google/credentials", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
+    var _d;
+    // const { accessToken, refreshToken, expiresIn, username } = req.headers;
+    const accessToken = req.headers.accesstoken;
+    const refreshToken = req.headers.refreshtoken;
+    const expiresIn = req.headers.expiresin;
+    const username = req.headers.username;
+    const googleId = req.headers.googleid;
+    oauth2Client.setCredentials({ access_token: accessToken });
+    if (Date.now() > parseInt(expiresIn)) {
+        console.log("Expired!!!!");
+        oauth2Client.setCredentials({
+            refresh_token: refreshToken,
+        });
+    }
+    // GET logged in user google account properties
+    const user = yield prisma.userData.findUnique({
+        where: {
+            googleId: googleId,
+        },
+    });
+    if (!user) {
+        try {
+            const response = yield analyticsAdmin.accountSummaries.list({
+                pageSize: 100,
+            });
+            const accountPropertySummaries = [];
+            (_d = response.data.accountSummaries) === null || _d === void 0 ? void 0 : _d.forEach((element) => {
+                var _a;
+                (_a = element.propertySummaries) === null || _a === void 0 ? void 0 : _a.forEach((sum) => {
+                    const summary = {
+                        property: sum.property,
+                        displayName: sum.displayName,
+                    };
+                    accountPropertySummaries.push(summary);
+                });
+            });
+            const user = yield prisma.userData.create({
+                data: {
+                    accessToken: accessToken,
+                    refreshToken: refreshToken,
+                    expiresIn: expiresIn,
+                    username: username,
+                    googleId: googleId,
+                },
+            });
+            for (const property of accountPropertySummaries) {
+                yield prisma.propertySummaries.create({
+                    data: {
+                        displayName: property.displayName,
+                        property: property.property,
+                        userId: user.id,
+                    },
+                });
+            }
+            res.sendStatus(200);
+        }
+        catch (error) {
+            console.log("ERROR", error);
+            res.send(error);
+        }
+    }
+    else {
+        res.status(200).send({ message: "Logged in" });
+    }
+}));
+const testDb = () => __awaiter(void 0, void 0, void 0, function* () {
+    yield prisma.propertySummaries.deleteMany();
+    yield prisma.userData.deleteMany();
+    console.log("DEL");
 });
+// setInterval(testDb, 5000);
 app.get("/google/get-data", (req, res) => __awaiter(void 0, void 0, void 0, function* () {
     const assessToken = process.env.GOOGLE_ACCESS_TOKEN;
     const expiresIn = parseInt(process.env.GOOGLE_EXPIRES_IN);
@@ -219,48 +287,120 @@ app.get("/google/get-data", (req, res) => __awaiter(void 0, void 0, void 0, func
     }
 }));
 const getData = () => __awaiter(void 0, void 0, void 0, function* () {
-    const assessToken = process.env.GOOGLE_ACCESS_TOKEN;
-    const expiresIn = parseInt(process.env.GOOGLE_EXPIRES_IN);
-    const refreshToken = process.env.GOOGLE_REFRESH_TOKEN;
-    if (Date.now() > expiresIn) {
-        console.log("Expired!!!!");
-        oauth2Client.setCredentials({
-            refresh_token: refreshToken,
-        });
-    }
-    else {
-        oauth2Client.setCredentials({ access_token: assessToken });
-    }
-    try {
-        const queryData = yield analyticsData.properties.runReport({
-            property: process.env.GOOGLE_PROPERTY_ID,
-            requestBody: {
-                dateRanges: [
-                    {
-                        startDate: "2023-02-08",
-                        endDate: "2023-02-09",
-                    },
-                ],
-                dimensions: [
-                    {
-                        name: "city",
-                    },
-                ],
-                metrics: [
-                    {
-                        name: "totalUsers",
-                    },
-                ],
-            },
-        });
-        // save to DB here
-        console.log("queryData", queryData.data);
-    }
-    catch (error) {
-        console.log("ERRERROR: ", error);
+    const user = yield prisma.userData.findFirst();
+    console.log("USERSR", user);
+    if (user) {
+        if (Date.now() > parseInt(user === null || user === void 0 ? void 0 : user.expiresIn)) {
+            console.log("Expired!!!!");
+            oauth2Client.setCredentials({
+                refresh_token: user.refreshToken,
+            });
+        }
+        else {
+            oauth2Client.setCredentials({ access_token: user.accessToken });
+        }
+        try {
+            const queryData = yield analyticsData.properties.runReport({
+                property: process.env.GOOGLE_PROPERTY_ID,
+                requestBody: {
+                    dateRanges: [
+                        {
+                            startDate: "2023-02-08",
+                            endDate: "2023-02-09",
+                        },
+                    ],
+                    dimensions: [
+                        {
+                            name: "city",
+                        },
+                    ],
+                    metrics: [
+                        {
+                            name: "totalUsers",
+                        },
+                    ],
+                },
+            });
+            const dimensionHeaders = queryData.data.dimensionHeaders;
+            const metricHeaders = queryData.data.metricHeaders;
+            const rows = queryData.data.rows;
+            const TestData = yield prisma.testData.create({
+                data: {
+                    userId: user.id,
+                },
+            });
+            const DimensionHeaders = yield prisma.dimensionHeaders.create({
+                data: {
+                    testDataId: TestData.id,
+                },
+            });
+            const MetricHeaders = yield prisma.metricHeaders.create({
+                data: {
+                    testDataId: TestData.id,
+                },
+            });
+            const Rows = yield prisma.rows.create({
+                data: {
+                    testDataId: TestData.id,
+                },
+            });
+            if (dimensionHeaders) {
+                for (const dh of dimensionHeaders) {
+                    yield prisma.dimensionHeadersValue.create({
+                        data: {
+                            dimensionHeadersId: DimensionHeaders.id,
+                            name: dh.name,
+                        },
+                    });
+                }
+            }
+            if (metricHeaders) {
+                for (const mh of metricHeaders) {
+                    yield prisma.metricHeadersValue.create({
+                        data: {
+                            metricHeadersId: MetricHeaders.id,
+                            name: mh.name,
+                            type: mh.type,
+                        },
+                    });
+                }
+            }
+            if (rows) {
+                for (const row of rows) {
+                    const Data = yield prisma.data.create({
+                        data: {
+                            rowsId: Rows.id,
+                        },
+                    });
+                    if (row.dimensionValues) {
+                        for (const dV of row.dimensionValues) {
+                            yield prisma.dimensionValues.create({
+                                data: {
+                                    dataId: Data.id,
+                                    value: dV.value,
+                                },
+                            });
+                        }
+                    }
+                    if (row.metricValues) {
+                        for (const mV of row.metricValues) {
+                            yield prisma.metricValues.create({
+                                data: {
+                                    dataId: Data.id,
+                                    value: mV.value,
+                                },
+                            });
+                        }
+                    }
+                }
+            }
+        }
+        catch (error) {
+            console.log("ERRERROR: ", error);
+        }
     }
 });
-// setInterval(getData, 60000);
+//setInterval(getData, 10000);
 app.get;
 app.listen(port, () => {
     console.log(`http://localhost:${port}`);
