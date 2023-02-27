@@ -8,6 +8,9 @@ import cookieParser from "cookie-parser";
 import { DatasetsModel, PropertySummaries } from "./models/serverModels";
 import { colors } from "./chartColors/colors";
 
+import { PrismaClient } from "@prisma/client";
+
+const prisma = new PrismaClient();
 const app: Express = express();
 const port = 8000;
 
@@ -175,15 +178,84 @@ app.get("/google/analytics/", async (req: Request, res: Response) => {
   }
 });
 
-app.get("/google/credentials", (req: Request, res: Response) => {
-  console.log("RQ.HEADERS", req.headers);
+app.get("/google/credentials", async (req: Request, res: Response) => {
+  // const { accessToken, refreshToken, expiresIn, username } = req.headers;
+  const accessToken = req.headers.accesstoken as string;
+  const refreshToken = req.headers.refreshtoken as string;
+  const expiresIn = req.headers.expiresin as string;
+  const username = req.headers.username as string;
+  const googleId = req.headers.googleid as string;
 
-  const { authorization, refresh, expiresIn } = req.headers;
+  oauth2Client.setCredentials({ access_token: accessToken });
+  if (Date.now() > parseInt(expiresIn)) {
+    console.log("Expired!!!!");
+    oauth2Client.setCredentials({
+      refresh_token: refreshToken,
+    });
+  }
 
-  // Save to DB here
+  // GET logged in user google account properties
 
-  res.send(200);
+  const user = await prisma.userData.findUnique({
+    where: {
+      googleId: googleId,
+    },
+  });
+
+  if (!user) {
+    try {
+      const response = await analyticsAdmin.accountSummaries.list({
+        pageSize: 100,
+      });
+
+      const accountPropertySummaries: PropertySummaries[] = [];
+      response.data.accountSummaries?.forEach((element) => {
+        element.propertySummaries?.forEach((sum) => {
+          const summary: PropertySummaries = {
+            property: sum.property as string,
+            displayName: sum.displayName as string,
+          };
+          accountPropertySummaries.push(summary);
+        });
+      });
+
+      const user = await prisma.userData.create({
+        data: {
+          accessToken: accessToken as string,
+          refreshToken: refreshToken as string,
+          expiresIn: expiresIn as string,
+          username: username as string,
+          googleId: googleId as string,
+        },
+      });
+
+      for (const property of accountPropertySummaries) {
+        await prisma.propertySummaries.create({
+          data: {
+            displayName: property.displayName,
+            property: property.property,
+            userId: user.id,
+          },
+        });
+      }
+      res.sendStatus(200);
+    } catch (error) {
+      console.log("ERROR", error);
+      res.send(error);
+    }
+  } else {
+    res.status(200).send({ message: "Logged in" });
+  }
 });
+
+const testDb = async () => {
+  await prisma.propertySummaries.deleteMany();
+  await prisma.userData.deleteMany();
+
+  console.log("DEL");
+};
+
+// setInterval(testDb, 5000);
 
 app.get("/google/get-data", async (req: Request, res: Response) => {
   const assessToken = process.env.GOOGLE_ACCESS_TOKEN as string;
@@ -234,51 +306,130 @@ app.get("/google/get-data", async (req: Request, res: Response) => {
 });
 
 const getData = async () => {
-  const assessToken = process.env.GOOGLE_ACCESS_TOKEN as string;
-  const expiresIn = parseInt(process.env.GOOGLE_EXPIRES_IN as string);
-  const refreshToken = process.env.GOOGLE_REFRESH_TOKEN as string;
+  const user = await prisma.userData.findFirst();
 
-  if (Date.now() > expiresIn) {
-    console.log("Expired!!!!");
-    oauth2Client.setCredentials({
-      refresh_token: refreshToken,
-    });
-  } else {
-    oauth2Client.setCredentials({ access_token: assessToken });
-  }
+  console.log("USERSR", user);
 
-  try {
-    const queryData = await analyticsData.properties.runReport({
-      property: process.env.GOOGLE_PROPERTY_ID,
-      requestBody: {
-        dateRanges: [
-          {
-            startDate: "2023-02-08",
-            endDate: "2023-02-09",
-          },
-        ],
-        dimensions: [
-          {
-            name: "city",
-          },
-        ],
-        metrics: [
-          {
-            name: "totalUsers",
-          },
-        ],
-      },
-    });
+  if (user) {
+    if (Date.now() > parseInt(user?.expiresIn)) {
+      console.log("Expired!!!!");
+      oauth2Client.setCredentials({
+        refresh_token: user.refreshToken,
+      });
+    } else {
+      oauth2Client.setCredentials({ access_token: user.accessToken });
+    }
 
-    // save to DB here
+    try {
+      const queryData = await analyticsData.properties.runReport({
+        property: process.env.GOOGLE_PROPERTY_ID,
+        requestBody: {
+          dateRanges: [
+            {
+              startDate: "2023-02-08",
+              endDate: "2023-02-09",
+            },
+          ],
+          dimensions: [
+            {
+              name: "city",
+            },
+          ],
+          metrics: [
+            {
+              name: "totalUsers",
+            },
+          ],
+        },
+      });
 
-    console.log("queryData", queryData.data);
-  } catch (error) {
-    console.log("ERRERROR: ", error);
+      const dimensionHeaders = queryData.data.dimensionHeaders;
+      const metricHeaders = queryData.data.metricHeaders;
+      const rows = queryData.data.rows;
+
+      const TestData = await prisma.testData.create({
+        data: {
+          userId: user.id,
+        },
+      });
+
+      const DimensionHeaders = await prisma.dimensionHeaders.create({
+        data: {
+          testDataId: TestData.id,
+        },
+      });
+
+      const MetricHeaders = await prisma.metricHeaders.create({
+        data: {
+          testDataId: TestData.id,
+        },
+      });
+
+      const Rows = await prisma.rows.create({
+        data: {
+          testDataId: TestData.id,
+        },
+      });
+
+      if (dimensionHeaders) {
+        for (const dh of dimensionHeaders) {
+          await prisma.dimensionHeadersValue.create({
+            data: {
+              dimensionHeadersId: DimensionHeaders.id,
+              name: dh.name,
+            },
+          });
+        }
+      }
+
+      if (metricHeaders) {
+        for (const mh of metricHeaders) {
+          await prisma.metricHeadersValue.create({
+            data: {
+              metricHeadersId: MetricHeaders.id,
+              name: mh.name,
+              type: mh.type,
+            },
+          });
+        }
+      }
+
+      if (rows) {
+        for (const row of rows) {
+          const Data = await prisma.data.create({
+            data: {
+              rowsId: Rows.id,
+            },
+          });
+          if (row.dimensionValues) {
+            for (const dV of row.dimensionValues) {
+              await prisma.dimensionValues.create({
+                data: {
+                  dataId: Data.id,
+                  value: dV.value,
+                },
+              });
+            }
+          }
+          if (row.metricValues) {
+            for (const mV of row.metricValues) {
+              await prisma.metricValues.create({
+                data: {
+                  dataId: Data.id,
+                  value: mV.value,
+                },
+              });
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.log("ERRERROR: ", error);
+    }
   }
 };
 
-// setInterval(getData, 60000);
+//setInterval(getData, 10000);
 
 app.get;
 
