@@ -10,89 +10,69 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model UserData {
+model User {
   id                    String                    @id @default(uuid())
   username              String
-  properties            PropertySummaries[]
-  testData              TestData[]
+  properties            PropertySummary[]
+  googleData            GoogleData[]
   accessToken           String                    @db.Text
   refreshToken          String
   expiresIn             String
   googleId              String                    @unique
-
 }
 
-model PropertySummaries {
+model PropertySummary {
   id                    String                    @id @default(uuid())
   property              String
   displayName           String
-  user                  UserData                  @relation(fields: [userId], references: [id])
+  user                  User                  @relation(fields: [userId], references: [id])
   userId                String
 }
 
-model TestData {
+model GoogleData {
   id                    String                    @id @default(uuid())
-  dimensionHeaders      DimensionHeaders[]
-  metricHeaders         MetricHeaders[]
-  rows                  Rows[]
-  user                  UserData                  @relation(fields: [userId], references: [id])
+  dimensionHeaders      DimensionHeader[]
+  metricHeaders         MetricHeader[]
+  rows                  Row[]
+  date                  String                    @unique
+  createdAt             DateTime                  @default(now())
+  user                  User                  @relation(fields: [userId], references: [id])
   userId                String
 }
 
-model DimensionHeaders {
-  id                    String                    @id @default(uuid())
-  dimensionHeadersValue DimensionHeadersValue[]
-  testData              TestData                  @relation(fields: [testDataId], references: [id])
-  testDataId            String
-}
-
-model DimensionHeadersValue {
+model DimensionHeader {
   id                    String                    @id @default(uuid())
   name                  String?
-  dimensionHeaders      DimensionHeaders          @relation(fields: [dimensionHeadersId], references: [id])
-  dimensionHeadersId    String 
+  googleData            GoogleData                @relation(fields: [googleDataId], references: [id])
+  googleDataId          String
 }
 
-model MetricHeaders {
-  id                    String                    @id @default(uuid())
-  metricHeadersValue    MetricHeadersValue[]
-  testData              TestData                  @relation(fields: [testDataId], references: [id])
-  testDataId            String
-}
-
-model MetricHeadersValue {
+model MetricHeader {
   id                    String                    @id @default(uuid())
   name                  String?
   type                  String?
-  metricHeaders         MetricHeaders             @relation(fields: [metricHeadersId], references: [id])
-  metricHeadersId       String 
+  googleData            GoogleData                @relation(fields: [googleDataId], references: [id])
+  googleDataId          String
 }
 
-model Rows {
+model Row {
   id                    String                    @id @default(uuid())
-  data                  Data[]
-  testData              TestData                  @relation(fields: [testDataId], references: [id])
-  testDataId            String
+  metricValues          MetricValue[]
+  dimensionValues       DimensionValue[]
+  googleData            GoogleData                @relation(fields: [googleDataId], references: [id])
+  googleDataId          String
 }
 
-model Data {
-  id                    String                    @id @default(uuid())
-  metricValues          MetricValues[]
-  dimensionValues       DimensionValues[]
-  rows                  Rows                      @relation(fields: [rowsId], references: [id])
-  rowsId                String
-}
-
-model DimensionValues {
+model DimensionValue {
   id                    String                    @id @default(uuid())
   value                 String?
-  data                  Data                      @relation(fields: [dataId], references: [id])
-  dataId                String
+  row                   Row                       @relation(fields: [rowId], references: [id])
+  rowId                 String
 }
 
-model MetricValues {
+model MetricValue {
   id                    String                    @id @default(uuid())
   value                 String?
-  data                  Data                      @relation(fields: [dataId], references: [id])
-  dataId                String
+  row                   Row                       @relation(fields: [rowId], references: [id])
+  rowId                 String
 }
